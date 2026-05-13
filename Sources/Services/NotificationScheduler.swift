@@ -7,8 +7,8 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationScheduler()
 
     private let center = UNUserNotificationCenter.current()
-    private var scheduledIDs: Set<String> = []
     private var preferences: Preferences?
+    private static let idPrefix = "cueline:"
 
     func bootstrap(preferences: Preferences) {
         self.preferences = preferences
@@ -29,46 +29,67 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
         let lead = TimeInterval(prefs.leadTimeMinutes * 60)
         let now = Date()
 
-        let candidates = events.filter { $0.meetingLink != nil && $0.start > now }
-        let desired = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
-
+        // Always replace all cueline-owned pending requests so subtitle/body stay fresh
+        // (they freeze at schedule time on macOS) and stale ones from prior versions disappear.
         let pending = await center.pendingNotificationRequests()
-        for req in pending where req.identifier.hasPrefix("cueline:") {
-            if desired[String(req.identifier.dropFirst("cueline:".count))] == nil {
-                center.removePendingNotificationRequests(withIdentifiers: [req.identifier])
-            }
+        let cuelineIDs = pending.map(\.identifier).filter { $0.hasPrefix(Self.idPrefix) }
+        if !cuelineIDs.isEmpty {
+            center.removePendingNotificationRequests(withIdentifiers: cuelineIDs)
         }
-        let pendingIDs = Set(pending.map(\.identifier))
+
+        let candidates = events.filter { $0.meetingLink != nil && $0.start > now }
 
         for event in candidates {
-            let id = "cueline:\(event.id)"
-            if pendingIDs.contains(id) { continue }
-
             let fire = event.start.addingTimeInterval(-lead)
-            if fire <= now { continue }
+            if fire <= now.addingTimeInterval(1) { continue }  // must be strictly in the future
 
-            let content = UNMutableNotificationContent()
-            content.title = event.title
-            let provider = event.meetingLink?.provider.displayName ?? "Meeting"
-            let minutes = max(1, Int(ceil(event.start.timeIntervalSince(now) / 60)))
-            content.subtitle = "\(provider) — in \(minutes) min"
-            content.body = "Click to join. Calendar: \(event.calendarTitle)"
-            content.sound = .default
-            content.userInfo = [
-                "url": event.meetingLink!.url.absoluteString,
-                "copyOnNotify": prefs.copyLinkOnNotify,
-            ]
+            let id = Self.idPrefix + event.id
+            let content = makeContent(for: event, prefs: prefs)
 
-            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fire.timeIntervalSinceNow, repeats: false)
+            // UNCalendarNotificationTrigger fires at an absolute clock time — more reliable
+            // than UNTimeIntervalNotificationTrigger for long-horizon (multi-hour) scheduling.
+            let comps = Calendar.current.dateComponents(
+                [.year, .month, .day, .hour, .minute, .second],
+                from: fire
+            )
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
             let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
             do {
                 try await center.add(request)
-                scheduledIDs.insert(id)
             } catch {
                 NSLog("Cueline failed to schedule notification: \(error)")
             }
         }
     }
+
+    private func makeContent(for event: CalendarEvent, prefs: Preferences) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = event.title
+        let provider = event.meetingLink?.provider.displayName ?? "Meeting"
+        content.subtitle = subtitleText(provider: provider, leadMinutes: prefs.leadTimeMinutes)
+        content.body = eventTimeText(event)
+        content.sound = .default
+        content.userInfo = [
+            "url": event.meetingLink!.url.absoluteString,
+            "copyOnNotify": prefs.copyLinkOnNotify,
+        ]
+        return content
+    }
+
+    private func subtitleText(provider: String, leadMinutes: Int) -> String {
+        if leadMinutes <= 0 { return "\(provider) — starting now" }
+        if leadMinutes == 1 { return "\(provider) — in 1 min" }
+        return "\(provider) — in \(leadMinutes) min"
+    }
+
+    private func eventTimeText(_ event: CalendarEvent) -> String {
+        let f = DateFormatter()
+        f.locale = Locale.current
+        f.dateFormat = "HH:mm"
+        return "\(f.string(from: event.start)) – \(f.string(from: event.end))"
+    }
+
+    // MARK: - Delegate
 
     // Show banners even when the app is foregrounded (e.g. popover open).
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {

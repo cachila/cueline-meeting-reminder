@@ -87,8 +87,14 @@ final class EventKitProvider {
         return raw.compactMap { event -> CalendarEvent? in
             guard let identifier = event.eventIdentifier, !identifier.isEmpty else { return nil }
             guard let start = event.startDate, let end = event.endDate else { return nil }
-            // Skip cancelled / declined events
+            // Organizer-side cancellation
             if let status = event.status as EKEventStatus?, status == .canceled { return nil }
+            // The current user RSVPed "No" — don't notify for meetings you've declined.
+            if let attendees = event.attendees,
+               let me = attendees.first(where: { $0.isCurrentUser }),
+               me.participantStatus == .declined {
+                return nil
+            }
 
             let candidates: [String?] = [
                 event.url?.absoluteString,
