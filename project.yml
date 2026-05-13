@@ -1,0 +1,44 @@
+name: Cueline
+options:
+  bundleIdPrefix: dev.cueline
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    PRODUCT_BUNDLE_IDENTIFIER: dev.cueline.Cueline
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
+    ENABLE_HARDENED_RUNTIME: NO
+
+targets:
+  Cueline:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    resources:
+      - path: Resources/Assets.xcassets
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleName: Cueline
+        CFBundleDisplayName: Cueline
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "13.0"
+        LSUIElement: true
+        NSHumanReadableCopyright: "MIT"
+        NSCalendarsUsageDescription: "Cueline reads your upcoming events so it can show you the next meeting and notify you before it starts."
+        NSCalendarsFullAccessUsageDescription: "Cueline reads your upcoming events so it can show you the next meeting and notify you before it starts."
+    entitlements:
+      path: Resources/Cueline.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_PREVIEWS: YES
