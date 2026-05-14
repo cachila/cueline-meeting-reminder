@@ -199,9 +199,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if mins < 60 {
             text = "\(mins)m"
         } else {
-            let f = DateFormatter()
-            f.dateFormat = "HH:mm"
-            text = f.string(from: next.start)
+            let timeF = DateFormatter()
+            timeF.dateFormat = "HH:mm"
+            let timeStr = timeF.string(from: next.start)
+            if Calendar.current.isDateInToday(next.start) {
+                text = timeStr
+            } else {
+                let dayF = DateFormatter()
+                dayF.locale = Locale.current
+                dayF.dateFormat = "E"  // Mon, Tue, ...
+                text = "\(dayF.string(from: next.start)) \(timeStr)"
+            }
         }
         statusItem.button?.title = " " + text
     }

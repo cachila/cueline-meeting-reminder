@@ -13,7 +13,25 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
     func bootstrap(preferences: Preferences) {
         self.preferences = preferences
         center.delegate = self
-        Task { await requestAuthorization() }
+        Task {
+            await requestAuthorization()
+            // Wipe stragglers from previous runs whose content/trigger schema may
+            // not match the current code. sync() will reschedule fresh ones.
+            await purgeAllCuelineNotifications()
+        }
+    }
+
+    private func purgeAllCuelineNotifications() async {
+        let pending = await center.pendingNotificationRequests().map(\.identifier)
+        let delivered = await center.deliveredNotifications().map(\.request.identifier)
+        let pendingIDs = pending.filter { $0.hasPrefix(Self.idPrefix) }
+        let deliveredIDs = delivered.filter { $0.hasPrefix(Self.idPrefix) }
+        if !pendingIDs.isEmpty {
+            center.removePendingNotificationRequests(withIdentifiers: pendingIDs)
+        }
+        if !deliveredIDs.isEmpty {
+            center.removeDeliveredNotifications(withIdentifiers: deliveredIDs)
+        }
     }
 
     private func requestAuthorization() async {
@@ -29,13 +47,10 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
         let lead = TimeInterval(prefs.leadTimeMinutes * 60)
         let now = Date()
 
-        // Always replace all cueline-owned pending requests so subtitle/body stay fresh
-        // (they freeze at schedule time on macOS) and stale ones from prior versions disappear.
-        let pending = await center.pendingNotificationRequests()
-        let cuelineIDs = pending.map(\.identifier).filter { $0.hasPrefix(Self.idPrefix) }
-        if !cuelineIDs.isEmpty {
-            center.removePendingNotificationRequests(withIdentifiers: cuelineIDs)
-        }
+        // Always wipe Cueline-owned pending + delivered before rescheduling. Subtitles
+        // and bodies freeze at schedule time on macOS, so the only way to keep them
+        // fresh is to re-create on every sync.
+        await purgeAllCuelineNotifications()
 
         let candidates = events.filter { $0.meetingLink != nil && $0.start > now }
 
