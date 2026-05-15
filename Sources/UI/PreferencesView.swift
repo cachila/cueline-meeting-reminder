@@ -37,6 +37,13 @@ struct PreferencesView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                Stepper(value: $preferences.lookaheadDays, in: 1...14) {
+                    HStack {
+                        Text("Days to look ahead:")
+                        Text("\(preferences.lookaheadDays) \(preferences.lookaheadDays == 1 ? "day" : "days")")
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
             if let err = events.lastError {
                 Text(err)

@@ -4,12 +4,20 @@ import AppKit
 struct MenuBarView: View {
     @EnvironmentObject var events: EventStore
     @EnvironmentObject var selection: CalendarSelection
+    @EnvironmentObject var preferences: Preferences
 
     var permissionGranted: Bool
     var onOpenPreferences: () -> Void
     var onRefresh: () -> Void
     var onQuit: () -> Void
     var onGrantAccess: () -> Void
+
+    // Tuned to match EventRow + ProviderBadge stack at default text sizes.
+    private static let estimatedRowHeight: CGFloat = 58
+    private static let estimatedHeaderHeight: CGFloat = 30
+    private static let scrollPadding: CGFloat = 8
+    /// Popover scrolls once it would need to show more than this many event rows.
+    private static let maxRowsBeforeScroll: Int = 5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -39,7 +47,7 @@ struct MenuBarView: View {
                     }
                     .padding(.vertical, 4)
                 }
-                .frame(maxHeight: 360)
+                .frame(height: min(computedContentHeight, viewportCap))
             }
 
             Divider()
@@ -110,6 +118,26 @@ struct MenuBarView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    /// Deterministic content height computed from the visible row + header count.
+    /// Cheaper and more reliable than a GeometryReader measurement, which fights
+    /// the ScrollView's own height when nested.
+    private var computedContentHeight: CGFloat {
+        let dayCount = CGFloat(groupedEvents.count)
+        let eventCount = CGFloat(groupedEvents.reduce(0) { $0 + $1.1.count })
+        return eventCount * Self.estimatedRowHeight
+            + dayCount * Self.estimatedHeaderHeight
+            + Self.scrollPadding
+    }
+
+    /// Upper bound on the scroll viewport: enough vertical space for
+    /// `maxRowsBeforeScroll` rows plus worst-case day-header overhead.
+    private var viewportCap: CGFloat {
+        let rows = CGFloat(Self.maxRowsBeforeScroll)
+        return rows * Self.estimatedRowHeight
+            + 2 * Self.estimatedHeaderHeight
+            + Self.scrollPadding
     }
 
     private var groupedEvents: [(String, [CalendarEvent])] {

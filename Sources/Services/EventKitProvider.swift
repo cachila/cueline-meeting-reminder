@@ -69,7 +69,7 @@ final class EventKitProvider {
         }
     }
 
-    func fetchUpcoming(within seconds: TimeInterval, includedCalendarIDs: Set<String>?) -> [CalendarEvent] {
+    func fetchUpcoming(until end: Date, includedCalendarIDs: Set<String>?) -> [CalendarEvent] {
         let allCalendars = store.calendars(for: .event)
         let included: [EKCalendar]
         if let ids = includedCalendarIDs, !ids.isEmpty {
@@ -80,7 +80,7 @@ final class EventKitProvider {
         guard !included.isEmpty else { return [] }
 
         let now = Date()
-        let end = now.addingTimeInterval(seconds)
+        guard end > now else { return [] }
         let predicate = store.predicateForEvents(withStart: now, end: end, calendars: included)
         let raw = store.events(matching: predicate)
 

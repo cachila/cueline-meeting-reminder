@@ -8,7 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let preferences = Preferences()
     let selection = CalendarSelection()
     let provider = EventKitProvider()
-    lazy var events = EventStore(provider: provider, selection: selection)
+    lazy var events = EventStore(provider: provider, selection: selection, preferences: preferences)
 
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
@@ -91,6 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         .environmentObject(events)
         .environmentObject(selection)
+        .environmentObject(preferences)
         popover.contentViewController = NSHostingController(rootView: view)
     }
 
@@ -107,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         .environmentObject(events)
         .environmentObject(selection)
+        .environmentObject(preferences)
         popover.contentViewController = NSHostingController(rootView: view)
     }
 
@@ -176,6 +178,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func observeSelection() {
         selection.$includedIdentifiers
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                Task { await self.events.refresh() }
+            }
+            .store(in: &cancellables)
+
+        preferences.$lookaheadDays
             .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in

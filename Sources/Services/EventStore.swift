@@ -10,11 +10,12 @@ final class EventStore: ObservableObject {
 
     let provider: EventKitProvider
     private let selection: CalendarSelection
-    private let lookaheadSeconds: TimeInterval = 60 * 60 * 24  // 24h
+    private let preferences: Preferences
 
-    init(provider: EventKitProvider, selection: CalendarSelection) {
+    init(provider: EventKitProvider, selection: CalendarSelection, preferences: Preferences) {
         self.provider = provider
         self.selection = selection
+        self.preferences = preferences
     }
 
     func refresh() async {
@@ -27,12 +28,20 @@ final class EventStore: ObservableObject {
         refreshing = true
         defer { refreshing = false }
 
-        let events = provider.fetchUpcoming(
-            within: lookaheadSeconds,
-            includedCalendarIDs: selection.asFilter
-        )
+        let end = endOfWindow()
+        let events = provider.fetchUpcoming(until: end, includedCalendarIDs: selection.asFilter)
         self.events = events
         self.lastRefresh = Date()
         self.lastError = nil
+    }
+
+    /// Midnight at the end of (today + lookaheadDays). For `lookaheadDays = 1`
+    /// this returns midnight at the start of "day after tomorrow", so the
+    /// query window covers all of today + tomorrow.
+    private func endOfWindow() -> Date {
+        let cal = Calendar.current
+        let startOfToday = cal.startOfDay(for: Date())
+        let days = max(1, preferences.lookaheadDays)
+        return cal.date(byAdding: .day, value: days + 1, to: startOfToday) ?? Date().addingTimeInterval(86_400)
     }
 }
