@@ -161,9 +161,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startTicker() {
-        tickTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.updateStatusTitle() }
         }
+        // .common keeps the timer firing while the popover is open / menus are tracking.
+        RunLoop.main.add(timer, forMode: .common)
+        tickTimer = timer
     }
 
     private func observeEvents() {
@@ -203,23 +206,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem.button?.title = ""
             return
         }
-        let mins = Int(ceil(next.start.timeIntervalSince(now) / 60))
         let text: String
-        if mins <= 0 {
-            text = "live"
-        } else if mins < 60 {
-            text = "\(mins)m"
+        if next.start <= now {
+            // Meeting in progress — count down to end.
+            let remaining = max(1, Int(ceil(next.end.timeIntervalSince(now) / 60)))
+            text = "live \(remaining)m"
         } else {
-            let timeF = DateFormatter()
-            timeF.dateFormat = "HH:mm"
-            let timeStr = timeF.string(from: next.start)
-            if Calendar.current.isDateInToday(next.start) {
-                text = timeStr
+            let mins = Int(ceil(next.start.timeIntervalSince(now) / 60))
+            if mins < 60 {
+                text = "\(mins)m"
             } else {
-                let dayF = DateFormatter()
-                dayF.locale = Locale.current
-                dayF.dateFormat = "E"  // Mon, Tue, ...
-                text = "\(dayF.string(from: next.start)) \(timeStr)"
+                let timeF = DateFormatter()
+                timeF.dateFormat = "HH:mm"
+                let timeStr = timeF.string(from: next.start)
+                if Calendar.current.isDateInToday(next.start) {
+                    text = timeStr
+                } else {
+                    let dayF = DateFormatter()
+                    dayF.locale = Locale.current
+                    dayF.dateFormat = "E"  // Mon, Tue, ...
+                    text = "\(dayF.string(from: next.start)) \(timeStr)"
+                }
             }
         }
         statusItem.button?.title = " " + text
